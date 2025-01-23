@@ -163,15 +163,8 @@ cython_debug/
 *.tar
 *.gz
 
-# Ignore Docker Compose files
-docker-compose.yml
-docker-compose.yaml
-docker-compose.override.yml
-docker-compose.override.yaml
-
 # Ignore local development environment files
 .env
 
 # Include template for .env file and docker-compose.yml
 !.env.template
-!docker-compose.yml.template
