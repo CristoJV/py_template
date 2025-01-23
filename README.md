@@ -1,12 +1,14 @@
-# Package
-Welcomet to this package project!
+# Template
+
+Welcomet to this template project!
 
 # Project Structure
+
 ```
 project
 ├── docker
 ├── docs
-├── package
+├── template
 │   ├── data
 │   ├── models
 │   ├── engines

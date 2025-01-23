@@ -1,5 +1,3 @@
 #!/bin/bash
-
-source ${VENV_PATH}/bin/activate
-
+source ${PYTHON_VENV_DIR}/bin/activate
 exec /bin/bash "$@"

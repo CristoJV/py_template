@@ -1,106 +1,168 @@
 # Dockerfile with support for GPU
 # author: CristoJV
-# date: 2023-11-16
+# date: 2025-01-23
+
+# -------------------------------------------------------------------- #
+# Base Image
+# -------------------------------------------------------------------- #
 
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
-# --------------------------------------------------------------------------- #
-# Preconfigure the timezone
-# --------------------------------------------------------------------------- #
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata && \
-    ln -fs /usr/share/zoneinfo/Europe/Madrid /etc/localtime && \
-    dpkg-reconfigure --frontend noninteractive tzdata && \
-    apt-get clean
+LABEL maintainer="cristojurado3916@ctag.com" \
+    version="1.0" \
+    description="Docker to work with Python and Pytorch"
 
-# --------------------------------------------------------------------------- #
-# Install the basic packages
-# --------------------------------------------------------------------------- #
-RUN apt update && \
-    apt install --no-install-recommends -y gcc git zip curl htop \
-    libgl1-mesa-glx libglib2.0-0 gnupg g++ build-essential \
-    v4l-utils software-properties-common screen
-
-# --------------------------------------------------------------------------- #
-# Install Python
-# --------------------------------------------------------------------------- #
-ARG PYTHON_VERSION
-RUN add-apt-repository ppa:deadsnakes/ppa && \
-    apt update && \
-    apt install -y python${PYTHON_VERSION} python${PYTHON_VERSION}-dev \
-    python${PYTHON_VERSION}-distutils python3-tk python3-pip && \
-    apt clean
-
-# --------------------------------------------------------------------------- #
-# Setup virtual environment
-# --------------------------------------------------------------------------- #
 ENV SHELL /bin/bash
 SHELL ["/bin/bash", "-c"]
 
-ARG VENV_PATH
-RUN python${PYTHON_VERSION} -m pip install --upgrade pip && \
-    python${PYTHON_VERSION} -m pip install setuptools && \
-    python${PYTHON_VERSION} -m pip install virtualenv && \
-    python${PYTHON_VERSION} -m virtualenv ${VENV_PATH} && \
-    echo "source ${VENV_PATH}/bin/activate" >> ~/.bashrc
+# -------------------------------------------------------------------- #
+# Preconfigure the timezone
+# -------------------------------------------------------------------- #
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -yq tzdata \
+    && ln -fs /usr/share/zoneinfo/Europe/Madrid /etc/localtime \
+    && dpkg-reconfigure -f noninteractive tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
-# --------------------------------------------------------------------------- #
-# Install PyTorch
-# --------------------------------------------------------------------------- #
-ARG PYTORCH_VERSION
-ARG TORCHVISION_VERSION
-ARG TORCHAUDIO_VERSION
-ARG CUDA_VERSION
-RUN source ${VENV_PATH}/bin/activate && \
-    pip install torch==${PYTORCH_VERSION}+cu${CUDA_VERSION} \
-    torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION} \
-    torchaudio==${TORCHAUDIO_VERSION}+cu${CUDA_VERSION} \
-    --index-url https://download.pytorch.org/whl/cu${CUDA_VERSION}
+# -------------------------------------------------------------------- #
+# Install dependencies
+# -------------------------------------------------------------------- #
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    git \
+    git-lfs \
+    curl \
+    ca-certificates \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    v4l-utils \
+    software-properties-common \
+    screen \
+    openssh-client \
+    ffmpeg \
+    unzip \
+    unrar \
+    portaudio19-dev \
+    can-utils \
+    x11-apps \
+    xauth \
+    htop \
+    gnupg \
+    && git lfs install \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# --------------------------------------------------------------------------- #
-# Install Python packages
-# --------------------------------------------------------------------------- #
-ARG REQUIREMENTS_PATH
-COPY ${REQUIREMENTS_PATH}/requirements.txt /tmp/requirements.txt
-COPY ${REQUIREMENTS_PATH}/requirements-dev.txt /tmp/requirements-dev.txt
+ARG HISTFILE
+# Configure Bash history
+ENV HISTFILE="${HISTFILE}" \
+    HISTSIZE=1000 \
+    HISTFILESIZE=2000 \
+    HISTCONTROL=ignoredups:erasedups \
+    PROMPT_COMMAND="history -a; history -c; history -r"
 
-RUN source ${VENV_PATH}/bin/activate && \
-    pip install --upgrade pip && \
-    pip install -r /tmp/requirements.txt && \
-    rm /tmp/requirements.txt
+RUN mkdir -p $(dirname ${HISTFILE}) && \
+    touch ${HISTFILE} && \
+    chmod 600 ${HISTFILE}
 
-RUN source ${VENV_PATH}/bin/activate && \
-    pip install -r /tmp/requirements-dev.txt && \
-    rm /tmp/requirements-dev.txt
+# -------------------------------------------------------------------- #
+# Install Python
+# -------------------------------------------------------------------- #
+ARG PYTHON_VERSION
+ARG PYTHON_VENV_DIR
+ENV PYTHON_VERSION=${PYTHON_VERSION} \
+    PYTHON_VENV_DIR=${PYTHON_VENV_DIR}
 
+RUN add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt update \
+    && apt install --no-install-recommends -y \
+    python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}-dev \
+    python${PYTHON_VERSION}-venv \
+    tk-dev \
+    && apt clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# --------------------------------------------------------------------------- #
+# -------------------------------------------------------------------- #
+# Setup Python and install Python packages
+# -------------------------------------------------------------------- #
+RUN python${PYTHON_VERSION} -m ensurepip --upgrade \
+    && python${PYTHON_VERSION} -m pip install --no-cache-dir \
+    --upgrade pip setuptools wheel
+
+RUN python${PYTHON_VERSION} -m venv ${PYTHON_VENV_DIR} \
+    && ${PYTHON_VENV_DIR}/bin/pip install --no-cache-dir \
+    numpy \
+    && ${PYTHON_VENV_DIR}/bin/pip install --no-cache-dir \
+    torch \
+    torchvision \
+    torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+COPY requirements.txt requirements-dev.txt /tmp/
+
+RUN ${PYTHON_VENV_DIR}/bin/pip install --no-cache-dir \
+    -r /tmp/requirements.txt \
+    && ${PYTHON_VENV_DIR}/bin/pip install --no-cache-dir \
+    -r /tmp/requirements-dev.txt
+
+# -------------------------------------------------------------------- #
+# FUTURE
+# -------------------------------------------------------------------- #
+# In the future, these instructions can be split into a base image and a
+# user-specific image to allow other users to utilize the same base image
+# from the Docker Hub Registry.
+
+# -------------------------------------------------------------------- #
 # Setup working directory
-# --------------------------------------------------------------------------- #
-ARG WORKDIR
+# -------------------------------------------------------------------- #
+
+ARG WORKDIR=/app
 WORKDIR ${WORKDIR}
 
-# --------------------------------------------------------------------------- #
-# Setup user
-# --------------------------------------------------------------------------- #
-ARG USER
-ARG UID
-ARG GID
+# -------------------------------------------------------------------- #
+# Create Non-Root User
+# By default, the container runs as the root user. If user-specific
+# variables are provided (which is recommended), a non-root user will
+# be created and the container will run under that user.
+# -------------------------------------------------------------------- #
 
-RUN if [ ${USER} != "root" ] && [ ${UID:-0} -ne 0 ] && [ ${GID:-0} -ne 0 ]; \
-    then \
-    groupadd -g ${GID} ${USER} && \
-    useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USER} && \
-    chown -R ${USER}:${USER} ${WORKDIR} && \
-    chown -R ${USER}:${USER} ${VENV_PATH} && \
-    echo "${USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers; \
+ARG USER_NAME=root
+ARG USER_ID=0
+ARG GROUP_ID=0
+ARG SHARED_GROUP_ID
+
+RUN set -eux; \
+    if [ "${USER_ID}" -ne 0 ] && [ "${GROUP_ID}" -ne 0 ]; then \
+    if ! getent group "${GROUP_ID}" > /dev/null; then \
+    groupadd -g "${GROUP_ID}" "${USER_NAME}"; \
+    fi; \
+    if ! id -u "${USER_NAME}" > /dev/null 2>&1; then \
+    useradd -l -u "${USER_ID}" -g "${GROUP_ID}" "${USER_NAME}"; \
+    fi; \
+    # Ensure home directory permissions
+    install -d -m 0754 -o "${USER_NAME}" -g "${GROUP_ID}" \
+    "/home/${USER_NAME}"; \
+    chown -R "${USER_NAME}:${GROUP_ID}" "${WORKDIR}"; \
+    chown -R "${USER_NAME}:${GROUP_ID}" "${PYTHON_VENV_DIR}"; \
     fi
 
-USER ${USER}
+# -------------------------------------------------------------------- #
+# Adjust ownership of the working directory and
+# add user to shared_group, audio and video groups
+# -------------------------------------------------------------------- #
 
-# --------------------------------------------------------------------------- #
-# Entrypoint
-# --------------------------------------------------------------------------- #
-ARG ENTRYPOINT_PATH
-COPY ${ENTRYPOINT_PATH}/entrypoint.sh /entrypoint.sh
+RUN set -eux; \
+    if [ "${SHARED_GROUP_ID}" -ne 0 ] && ! getent group \
+    "${SHARED_GROUP_ID}" > /dev/null; then \
+    groupadd -g "${SHARED_GROUP_ID}" shared; \
+    usermod -aG shared "${USER_NAME}"; \
+    fi && \
+    usermod -aG audio,video "${USER_NAME}"
+
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+USER ${USER_NAME}
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
